@@ -35,7 +35,6 @@ def init_db():
                 value TEXT
             )
         """)
-
         db.execute("""
             CREATE TABLE IF NOT EXISTS messages (
                 message_id INTEGER PRIMARY KEY,
@@ -49,7 +48,6 @@ def get_group():
         result = db.execute(
             "SELECT value FROM settings WHERE key='group_id'"
         ).fetchone()
-
     return int(result[0]) if result else None
 
 
@@ -70,7 +68,6 @@ async def is_admin(update, context):
         update.effective_chat.id,
         update.effective_user.id
     )
-
     return member.status in ("administrator", "creator")
 
 
@@ -91,7 +88,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # =========================
 
 async def setgroup(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
     if update.effective_chat.type not in ("group", "supergroup"):
         return
 
@@ -102,7 +98,6 @@ async def setgroup(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     save_group(update.effective_chat.id)
-
     await update.message.reply_text(
         "🦢 Swan Admin connected successfully!"
     )
@@ -116,7 +111,6 @@ async def receive_message(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
-
     group_id = get_group()
 
     if not group_id:
@@ -125,7 +119,23 @@ async def receive_message(
         )
         return
 
+    user = update.effective_user
+    full_name = user.full_name or "Tidak tersedia"
+    username = f"@{user.username}" if user.username else "Tidak ada username"
+    user_id = user.id
+    received_at = update.message.date.strftime("%d-%m-%Y %H:%M:%S UTC")
+
+    sender_info = (
+        "📩 PESAN BARU MASUK\n\n"
+        f"👤 Nama: {full_name}\n"
+        f"🔖 Username: {username}\n"
+        f"🆔 User ID: {user_id}\n"
+        f"🕒 Waktu: {received_at}"
+    )
+
     try:
+        # Salinan pesan tetap menjadi pesan yang di-reply admin,
+        # sehingga mekanisme balasan lama tidak berubah.
         copied = await context.bot.copy_message(
             chat_id=group_id,
             from_chat_id=update.effective_chat.id,
@@ -135,12 +145,17 @@ async def receive_message(
         with sqlite3.connect(DATABASE) as db:
             db.execute(
                 "INSERT OR REPLACE INTO messages VALUES (?, ?)",
-                (copied.message_id, update.effective_user.id)
+                (copied.message_id, user_id)
             )
+
+        # Identitas dikirim sebagai pesan terpisah di grup admin.
+        await context.bot.send_message(
+            chat_id=group_id,
+            text=sender_info
+        )
 
     except Exception:
         logging.exception("Message delivery failed")
-
         await update.message.reply_text(
             "Sorry, message delivery failed."
         )
@@ -154,7 +169,6 @@ async def admin_reply(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
-
     message = update.message
 
     if not message.reply_to_message:
@@ -180,12 +194,10 @@ async def admin_reply(
             from_chat_id=message.chat_id,
             message_id=message.message_id
         )
-
         await message.reply_text("✅ Message delivered!")
 
     except Exception:
         logging.exception("Reply delivery failed")
-
         await message.reply_text(
             "❌ Failed to deliver reply."
         )
@@ -196,14 +208,12 @@ async def admin_reply(
 # =========================
 
 def main():
-
     if not TOKEN:
         raise ValueError(
             "BOT_TOKEN is missing. Set your bot token first."
         )
 
     init_db()
-
     app = Application.builder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
@@ -224,7 +234,6 @@ def main():
     )
 
     print("🦢 SWAN BOT IS RUNNING!")
-
     app.run_polling()
 
 
